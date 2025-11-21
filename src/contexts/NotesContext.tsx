@@ -36,9 +36,41 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
   // Load data from localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const loadedNotes = storage.getNotes();
-      const loadedFolders = storage.getFolders();
+      let loadedNotes = storage.getNotes();
+      let loadedFolders = storage.getFolders();
       const loadedTags = storage.getTags();
+      
+      // Create initial folder if none exist
+      let initialFolderId = 'initial-folder';
+      if (loadedFolders.length === 0) {
+        const initialFolder: Folder = {
+          id: initialFolderId,
+          name: 'My Notes',
+          parentId: null,
+          createdAt: Date.now(),
+        };
+        loadedFolders = [initialFolder];
+        storage.saveFolders(loadedFolders);
+      } else {
+        // Find the initial folder if it exists
+        const existingInitialFolder = loadedFolders.find(f => f.id === 'initial-folder');
+        if (existingInitialFolder) {
+          initialFolderId = existingInitialFolder.id;
+        } else {
+          // If no initial folder exists, use the first folder
+          initialFolderId = loadedFolders[0]?.id || 'initial-folder';
+        }
+      }
+      
+      // Move all root notes (notes with folderId === null) to the initial folder
+      const rootNotes = loadedNotes.filter(note => note.folderId === null);
+      if (rootNotes.length > 0) {
+        loadedNotes = loadedNotes.map(note => 
+          note.folderId === null ? { ...note, folderId: initialFolderId } : note
+        );
+        storage.saveNotes(loadedNotes);
+      }
+      
       setNotes(loadedNotes);
       setFolders(loadedFolders);
       setTags(loadedTags);

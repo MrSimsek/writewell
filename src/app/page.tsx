@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { NotesProvider } from '@/contexts/NotesContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
+import { DialogProvider } from '@/contexts/DialogContext';
 import Sidebar from '@/components/Sidebar';
 import Editor from '@/components/Editor';
 
@@ -67,9 +68,11 @@ function AppContent() {
 export default function Home() {
   return (
     <ThemeProvider>
-      <NotesProvider>
-        <AppContent />
-      </NotesProvider>
+      <DialogProvider>
+        <NotesProvider>
+          <AppContent />
+        </NotesProvider>
+      </DialogProvider>
     </ThemeProvider>
   );
 }

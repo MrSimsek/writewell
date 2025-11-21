@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -28,6 +29,7 @@ export default function Sidebar({ isCollapsed, isMobile = false, isOpen = false,
     getNotesByFolder,
   } = useNotes();
   const { theme, toggleTheme } = useTheme();
+  const { showDialog } = useDialog();
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [showDropdown, setShowDropdown] = useState(false);
@@ -49,8 +51,8 @@ export default function Sidebar({ isCollapsed, isMobile = false, isOpen = false,
   };
 
   const handleNewFolderClick = () => {
-    // Create folder immediately with default name
-    const newFolder = createFolder('New Folder', selectedFolderId);
+    // Create folder immediately with default name at root level
+    const newFolder = createFolder('New Folder', null);
     setEditingFolderId(newFolder.id);
     setEditingFolderName('New Folder');
     setShowDropdown(false);
@@ -131,9 +133,95 @@ export default function Sidebar({ isCollapsed, isMobile = false, isOpen = false,
     }
   };
 
-  const getNotePreview = (content: string) => {
-    const text = content.replace(/\n/g, ' ').trim();
-    return text.length > 50 ? text.substring(0, 50) + '...' : text || 'No content';
+  const getNotePreview = (content: string): { html: string; hasMore: boolean } => {
+    if (typeof window === 'undefined') {
+      return { html: '<span class="opacity-60">No content</span>', hasMore: false };
+    }
+    
+    if (!content || content.trim() === '') {
+      return { html: '<span class="opacity-60">No content</span>', hasMore: false };
+    }
+    
+    // Create a temporary DOM element to parse HTML and get text length
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+    const plainText = textContent.trim();
+    
+    if (plainText.length === 0) {
+      return { html: '<span class="opacity-60">No content</span>', hasMore: false };
+    }
+    
+    // If content is short enough, return as is
+    const maxLength = 100;
+    if (plainText.length <= maxLength) {
+      return { html: content, hasMore: false };
+    }
+    
+    // Truncate HTML intelligently
+    // Walk through nodes and accumulate text until we hit the limit
+    let charCount = 0;
+    const maxChars = maxLength;
+    
+    const truncateNode = (node: Node): { html: string; shouldContinue: boolean } => {
+      if (charCount >= maxChars) {
+        return { html: '', shouldContinue: false };
+      }
+      
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent || '';
+        if (charCount + text.length <= maxChars) {
+          charCount += text.length;
+          return { html: escapeHtml(text), shouldContinue: true };
+        } else {
+          const remaining = maxChars - charCount;
+          charCount = maxChars;
+          return { html: escapeHtml(text.substring(0, remaining)) + '...', shouldContinue: false };
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        const tagName = el.tagName.toLowerCase();
+        // Allow common formatting tags
+        const allowedTags = ['p', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'code', 'span'];
+        
+        if (allowedTags.includes(tagName)) {
+          let innerHtml = '';
+          let shouldContinue = true;
+          for (let i = 0; i < el.childNodes.length && shouldContinue; i++) {
+            const result = truncateNode(el.childNodes[i]);
+            innerHtml += result.html;
+            shouldContinue = result.shouldContinue;
+          }
+          return { html: `<${tagName}>${innerHtml}</${tagName}>`, shouldContinue };
+        } else {
+          // For other tags, just process children
+          let innerHtml = '';
+          let shouldContinue = true;
+          for (let i = 0; i < el.childNodes.length && shouldContinue; i++) {
+            const result = truncateNode(el.childNodes[i]);
+            innerHtml += result.html;
+            shouldContinue = result.shouldContinue;
+          }
+          return { html: innerHtml, shouldContinue };
+        }
+      }
+      return { html: '', shouldContinue: true };
+    };
+    
+    let previewHtml = '';
+    for (let i = 0; i < tempDiv.childNodes.length && charCount < maxChars; i++) {
+      const result = truncateNode(tempDiv.childNodes[i]);
+      previewHtml += result.html;
+      if (!result.shouldContinue) break;
+    }
+    
+    return { html: previewHtml || '<span class="opacity-60">No content</span>', hasMore: plainText.length > maxLength };
+  };
+  
+  const escapeHtml = (text: string): string => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   };
 
   // Close sidebar when note is selected on mobile
@@ -320,9 +408,14 @@ export default function Sidebar({ isCollapsed, isMobile = false, isOpen = false,
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm('Delete this folder? Notes will be moved to root.')) {
-                                deleteFolder(folder.id);
-                              }
+                              showDialog({
+                                title: 'Delete Folder',
+                                message: 'Delete this folder? Notes will be moved to root.',
+                                confirmText: 'Delete',
+                                cancelText: 'Cancel',
+                                variant: 'danger',
+                                onConfirm: () => deleteFolder(folder.id),
+                              });
                             }}
                             className={`p-1 ${theme === 'dark' ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'} opacity-0 group-hover:opacity-100 transition-opacity`}
                           >
@@ -367,7 +460,14 @@ export default function Sidebar({ isCollapsed, isMobile = false, isOpen = false,
                     }`}
                   >
                     <div className="text-xs md:text-sm font-medium">{note.title}</div>
-                    <div className={`mt-0.5 text-[10px] md:text-xs ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>{getNotePreview(note.content)}</div>
+                    <div
+                      data-note-preview
+                      className={`mt-0.5 text-[10px] md:text-xs ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} line-clamp-2`}
+                      dangerouslySetInnerHTML={{ __html: getNotePreview(note.content).html }}
+                      style={{
+                        fontFamily: 'var(--font-serif)',
+                      }}
+                    />
                     <div className={`mt-1 text-[10px] md:text-xs ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-500'}`}>{formatDate(note.updatedAt)}</div>
                   </button>
                 ))}

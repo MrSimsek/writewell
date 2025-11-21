@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useNotes } from "@/contexts/NotesContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useDialog } from "@/contexts/DialogContext";
 
 interface EditorProps {
   isSidebarCollapsed: boolean;
@@ -26,6 +27,7 @@ export default function Editor({
   const { notes, selectedNoteId, updateNote, deleteNote, tags, createTag } =
     useNotes();
   const { theme } = useTheme();
+  const { showDialog } = useDialog();
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
 
   // Local state
@@ -35,12 +37,17 @@ export default function Editor({
   const [newTagName, setNewTagName] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
+  const [showHeadingMenu, setShowHeadingMenu] = useState(false);
+  const [showBubbleMenu, setShowBubbleMenu] = useState(false);
+  const [bubbleMenuPosition, setBubbleMenuPosition] = useState({ top: 0, left: 0 });
+  const bubbleMenuRef = useRef<HTMLDivElement>(null);
 
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializingRef = useRef(false);
+  const headingMenuRef = useRef<HTMLDivElement>(null);
 
   // TipTap editor configuration
   const editor = useEditor({
@@ -192,10 +199,109 @@ export default function Editor({
   }, []);
 
   const handleDeleteNote = useCallback(() => {
-    if (selectedNote && confirm("Delete this note?")) {
-      deleteNote(selectedNote.id);
+    if (selectedNote) {
+      showDialog({
+        title: "Delete Note",
+        message: "Delete this note?",
+        confirmText: "Delete",
+        cancelText: "Cancel",
+        variant: "danger",
+        onConfirm: () => deleteNote(selectedNote.id),
+      });
     }
-  }, [selectedNote, deleteNote]);
+  }, [selectedNote, deleteNote, showDialog]);
+
+  // Close heading menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showHeadingMenu && headingMenuRef.current && !headingMenuRef.current.contains(event.target as Node)) {
+        setShowHeadingMenu(false);
+      }
+    };
+
+    if (showHeadingMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showHeadingMenu]);
+
+  // Track text selection for bubble menu
+  useEffect(() => {
+    if (!editor) return;
+
+    const handleSelectionUpdate = () => {
+      const { from, to } = editor.state.selection;
+      const hasSelection = from !== to;
+
+      if (hasSelection) {
+        try {
+          // Get the selection coordinates (these are viewport-relative)
+          const { view } = editor;
+          const { state } = view;
+          const { selection } = state;
+          
+          const start = view.coordsAtPos(selection.$from.pos);
+          const end = view.coordsAtPos(selection.$to.pos);
+
+          // Position the bubble menu above the selection
+          // coordsAtPos returns viewport coordinates, so we use fixed positioning
+          const top = Math.min(start.top, end.top);
+          const left = (start.left + end.left) / 2;
+
+          setBubbleMenuPosition({ top, left });
+          setShowBubbleMenu(true);
+        } catch (error) {
+          // If there's an error getting coordinates, hide the menu
+          setShowBubbleMenu(false);
+        }
+      } else {
+        setShowBubbleMenu(false);
+      }
+    };
+
+    // Listen to selection changes
+    const updateSelection = () => {
+      setTimeout(handleSelectionUpdate, 0);
+    };
+
+    // Use DOM events for better compatibility
+    const editorElement = editor.view.dom;
+    editorElement.addEventListener('mouseup', updateSelection);
+    editorElement.addEventListener('keyup', updateSelection);
+    editor.on('selectionUpdate', handleSelectionUpdate);
+    editor.on('transaction', handleSelectionUpdate);
+
+    return () => {
+      editorElement.removeEventListener('mouseup', updateSelection);
+      editorElement.removeEventListener('keyup', updateSelection);
+      editor.off('selectionUpdate', handleSelectionUpdate);
+      editor.off('transaction', handleSelectionUpdate);
+    };
+  }, [editor]);
+
+  // Close bubble menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showBubbleMenu && bubbleMenuRef.current && !bubbleMenuRef.current.contains(event.target as Node)) {
+        // Check if click is in the editor
+        const editorElement = editor?.view.dom;
+        if (editorElement && !editorElement.contains(event.target as Node)) {
+          setShowBubbleMenu(false);
+        }
+      }
+    };
+
+    if (showBubbleMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBubbleMenu, editor]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -283,6 +389,177 @@ export default function Editor({
               fontFamily: "var(--font-serif)",
             }}
           />
+          
+          {/* Custom Bubble Menu - Shows when text is selected */}
+          {editor && showBubbleMenu && (
+            <div
+              ref={bubbleMenuRef}
+              className={`fixed flex items-center gap-1 p-1.5 rounded-lg border shadow-lg z-50 ${theme === 'dark' ? 'border-zinc-700 bg-zinc-800' : 'border-zinc-200 bg-white'}`}
+              style={{
+                top: `${bubbleMenuPosition.top - 50}px`,
+                left: `${bubbleMenuPosition.left}px`,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {/* Bold */}
+              <button
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('bold')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Bold"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" />
+                </svg>
+              </button>
+
+              {/* Italic */}
+              <button
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('italic')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Italic"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+              </button>
+
+              {/* Strikethrough */}
+              <button
+                onClick={() => editor.chain().focus().toggleStrike().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('strike')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Strikethrough"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" />
+                </svg>
+              </button>
+
+              {/* Code */}
+              <button
+                onClick={() => editor.chain().focus().toggleCode().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('code')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Code"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+              </button>
+
+              {/* Divider */}
+              <div className={`w-px h-6 ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
+
+              {/* Heading */}
+              <div className="relative" ref={headingMenuRef}>
+                <button
+                  onClick={() => setShowHeadingMenu(!showHeadingMenu)}
+                  className={`rounded p-2 transition-colors touch-manipulation ${
+                    editor.isActive('heading')
+                      ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                      : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                  }`}
+                  title="Heading"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                </button>
+                {showHeadingMenu && (
+                  <div className={`absolute left-0 top-full mt-1 w-32 rounded-md border ${theme === 'dark' ? 'border-zinc-700 bg-zinc-800' : 'border-zinc-200 bg-white'} shadow-lg z-50`}>
+                    <button
+                      onClick={() => {
+                        editor.chain().focus().toggleHeading({ level: 1 }).run();
+                        setShowHeadingMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm ${theme === 'dark' ? 'text-zinc-300 hover:bg-zinc-700' : 'text-zinc-700 hover:bg-zinc-100'} first:rounded-t-md`}
+                    >
+                      Heading 1
+                    </button>
+                    <button
+                      onClick={() => {
+                        editor.chain().focus().toggleHeading({ level: 2 }).run();
+                        setShowHeadingMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm ${theme === 'dark' ? 'text-zinc-300 hover:bg-zinc-700' : 'text-zinc-700 hover:bg-zinc-100'}`}
+                    >
+                      Heading 2
+                    </button>
+                    <button
+                      onClick={() => {
+                        editor.chain().focus().toggleHeading({ level: 3 }).run();
+                        setShowHeadingMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm ${theme === 'dark' ? 'text-zinc-300 hover:bg-zinc-700' : 'text-zinc-700 hover:bg-zinc-100'} last:rounded-b-md`}
+                    >
+                      Heading 3
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Bullet List */}
+              <button
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('bulletList')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Bullet List"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                </svg>
+              </button>
+
+              {/* Numbered List */}
+              <button
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('orderedList')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Numbered List"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                </svg>
+              </button>
+
+              {/* Blockquote */}
+              <button
+                onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                className={`rounded p-2 transition-colors touch-manipulation ${
+                  editor.isActive('blockquote')
+                    ? theme === 'dark' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-300 text-zinc-900'
+                    : theme === 'dark' ? 'text-zinc-400 hover:bg-zinc-700 hover:text-zinc-100' : 'text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                }`}
+                title="Blockquote"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           {editor && <EditorContent editor={editor} />}
         </div>
       </div>

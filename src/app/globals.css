@@ -169,3 +169,45 @@ body {
 .touch-manipulation {
   touch-action: manipulation;
 }
+
+/* Note Preview Rich Text Styles */
+[data-note-preview] strong,
+[data-note-preview] b {
+  font-weight: 600;
+}
+
+[data-note-preview] em,
+[data-note-preview] i {
+  font-style: italic;
+}
+
+[data-note-preview] u {
+  text-decoration: underline;
+}
+
+[data-note-preview] s,
+[data-note-preview] strike {
+  text-decoration: line-through;
+}
+
+[data-note-preview] code {
+  background-color: rgb(63 63 70);
+  padding: 0.1em 0.3em;
+  border-radius: 0.2rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono), monospace;
+}
+
+.light [data-note-preview] code {
+  background-color: rgb(228 228 231);
+  color: rgb(24 24 27);
+}
+
+[data-note-preview] p {
+  margin: 0;
+  display: inline;
+}
+
+[data-note-preview] p:not(:last-child)::after {
+  content: ' ';
+}
