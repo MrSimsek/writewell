@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+:root {
+  --background: #18181b;
+  --foreground: #fafafa;
+}
+
+:root.light {
+  --background: #fafafa;
+  --foreground: #18181b;
+}
+
+:root.dark {
+  --background: #18181b;
+  --foreground: #fafafa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-serif);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  touch-action: manipulation;
+}
+
+#__next {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* TipTap Editor Styles */
+.ProseMirror {
+  outline: none;
+  min-height: 200px;
+}
+
+@media (max-width: 768px) {
+  .ProseMirror {
+    min-height: 300px;
+    font-size: 16px;
+  }
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(113 113 122);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.light .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(161 161 170);
+}
+
+.ProseMirror p {
+  margin: 0.5em 0;
+}
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  margin: 1em 0 0.5em 0;
+  font-weight: 600;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid rgb(82 82 91);
+  padding-left: 1em;
+  margin: 1em 0;
+  font-style: italic;
+  color: rgb(161 161 170);
+}
+
+.light .ProseMirror blockquote {
+  border-left: 3px solid rgb(212 212 216);
+  color: rgb(82 82 91);
+}
+
+.ProseMirror code {
+  background-color: rgb(63 63 70);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+.light .ProseMirror code {
+  background-color: rgb(228 228 231);
+  color: rgb(24 24 27);
+}
+
+.ProseMirror pre {
+  background-color: rgb(63 63 70);
+  padding: 1em;
+  border-radius: 0.5rem;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.light .ProseMirror pre {
+  background-color: rgb(228 228 231);
+  color: rgb(24 24 27);
+}
+
+.ProseMirror pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.ProseMirror strong {
+  font-weight: 600;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  /* Prevent text selection on buttons for better touch experience */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  /* Better touch targets */
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Smooth scrolling on mobile */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent zoom on input focus */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* Touch manipulation for better mobile performance */
+.touch-manipulation {
+  touch-action: manipulation;
+}
